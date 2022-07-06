@@ -61,7 +61,29 @@ h1#title {
   display: block;
   height: 50vh;
   width: auto;
-  max-width: 50vw
+  max-width: 50vw;
+  display: inline;
+  float: left;
+}
+.face-scroll {
+  display: block;
+  height: 50vh;
+  width: fit-content;
+  max-width: 11vw;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: inline;
+  vertical-align:top;
+  float: left;
+  padding-left: 25px;
+}
+
+.face-scroll img{
+    width: 7vw;
+    height: auto;
+    padding-left: auto;
+    padding-right: auto;
+    float: center;
 }
 
 

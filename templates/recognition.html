@@ -6,7 +6,17 @@
 
 {% block body %}
   <h2>Facial Recognition Processing</h2>
+  <div>
+      <img class="video" src="{{ url_for('recognition_feed') }}">
+      <div class="face-scroll">
+          <h2>Identified</h2>
+          <img src="{{ url_for('identified_feed') }}" alt="{{ url_for('static', filename='images/black.jpeg') }}">
+      </div>
+      <div class="face-scroll">
+          <h2>Unidentified</h2>
+          <img src="{{ url_for('unidentified_feed') }}">
+      </div>
+  </div>
 
-  <img class="video" src="{{ url_for('recognition_feed') }}">
   
 {% endblock %}

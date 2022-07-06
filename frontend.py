@@ -3,6 +3,7 @@ import json
 import os
 
 from time import time, sleep
+import time
 import requests
 
 from flask import Flask, render_template, Response, request
@@ -12,11 +13,19 @@ import numpy as np
 
 import postprocessing
 
-ENDPOINT = 'http://127.0.0.1:8000/api/facial_recognition/inference/'
+ENDPOINT_recognition = 'http://127.0.0.1:8000/api/facial_recognition/inference/'
+ENDPOINT_tracking = 'http://127.0.0.1:8000/api/people_detection/inference/'
 
 cap = None
 video = None
 currentframe = None
+response = []
+
+identified = []
+unidentified = []
+prev = 0
+prevIdent = 0
+prevUnident = 0
 
 def activate_stream():
     global cap
@@ -82,6 +91,11 @@ def gen():
             break
 
 def recognition_gen():
+    global identified
+    global unidentified
+    global prev
+    global response
+    frame_rate = 5
     try:
         cap.isOpened()
     except AttributeError:
@@ -91,18 +105,103 @@ def recognition_gen():
         img = cv2.flip(img, 1)
         if ret:
             try:
-                print('before request')
-                _, jpeg = cv2.imencode('.jpg', img)
-                payload = {'image': jpeg.tobytes()}
-                response = requests.post(ENDPOINT,
-                                         files=payload).json()
-                print('after request')
+                time_elapsed = time.time() - prev
+                if time_elapsed > 1. / frame_rate:
+                    prev = time.time()
+                    _, jpeg = cv2.imencode('.jpg', img)
+                    payload = {'image': jpeg.tobytes()}
+                    response = requests.post(ENDPOINT_recognition,
+                                             files=payload).json()
                 matched = response.get('FaceMatches')
                 unmatched = response.get('UnmatchedFaces')
+                identified = []
+                unidentified = []
                 for i in matched:
-                    img = postprocessing.plot_faces(frame=img, box=i.get('Box'), landmarks=i.get('Landmarks'), name=i.get('Name'))
+                    img, cropped = postprocessing.plot_faces(frame=img, box=i.get('Box'), landmarks=i.get('Landmarks'), name=i.get('Name'))
+                    identified.append(cropped)
                 for i in unmatched:
-                    img = postprocessing.plot_faces(frame=img, box=i.get('Box'), landmarks=i.get('Landmarks'), name=i.get('Name'))
+                    img, cropped = postprocessing.plot_faces(frame=img, box=i.get('Box'), landmarks=i.get('Landmarks'), name=i.get('Name'))
+                    unidentified.append(cropped)
+            except Exception as e:
+                print(str(e))
+            img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
+            frame = cv2.imencode('.png', img)[1].tobytes()
+            #print('before send')
+            yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
+            #print('after send')
+        else:
+            break
+
+def getIdentified():
+    global identified
+    global prevIdent
+    frame_rate = 0.5
+    try:
+        cap.isOpened()
+    except AttributeError:
+        activate_stream()
+    while (cap.isOpened()):
+        time_elapsed = time.time() - prevIdent
+        if time_elapsed > 1. / frame_rate:
+            prevIdent = time.time()
+            if len(identified) > 0:
+                try:
+                    img = postprocessing.gen_faces(identified)
+                    img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
+                    img = cv2.imencode('.png', img)[1].tobytes()
+                    yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+                except Exception as e:
+                    print(str(e))
+            else:
+                blank_image = np.zeros((160, 160, 3), np.uint8)
+                img = cv2.resize(blank_image, (0, 0), fx=0.5, fy=0.5)
+                img = cv2.imencode('.png', img)[1].tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+
+def getUnidentified():
+    global unidentified
+    global prevUnident
+    frame_rate = 0.5
+    try:
+        cap.isOpened()
+    except AttributeError:
+        activate_stream()
+    while (cap.isOpened()):
+        time_elapsed = time.time() - prevIdent
+        if time_elapsed > 1. / frame_rate:
+            prevIdent = time.time()
+            if len(unidentified) > 0:
+                try:
+                    img = postprocessing.gen_faces(unidentified)
+                    img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
+                    img = cv2.imencode('.png', img)[1].tobytes()
+                    yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+                except Exception as e:
+                    print(str(e))
+            else:
+                blank_image = np.zeros((160, 160, 3), np.uint8)
+                img = cv2.resize(blank_image, (0, 0), fx=0.5, fy=0.5)
+                img = cv2.imencode('.png', img)[1].tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+
+
+def tracking_gen():
+    global prev
+    global response
+    frame_rate = 5
+    try:
+        cap.isOpened()
+    except AttributeError:
+        activate_stream()
+    while (cap.isOpened()):
+        ret, img = cap.read()
+        img = cv2.flip(img, 1)
+        if ret:
+            try:
+                _, jpeg = cv2.imencode('.jpg', img)
+                payload = {'image': jpeg.tobytes()}
+                response = requests.post(ENDPOINT_tracking,
+                                         files=payload).json()
             except Exception as e:
                 print(str(e))
             img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
@@ -122,9 +221,19 @@ def recognition_feed():
     return Response(recognition_gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/streaming/identified_feed')
+def identified_feed():
+    return Response(getIdentified(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/streaming/unidentified_feed')
+def unidentified_feed():
+    return Response(getUnidentified(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
 @app.route('/streaming/tracked_feed')
 def tracked_feed():
-    return Response(recognition_gen(),
+    return Response(tracking_gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
