@@ -48,11 +48,11 @@ def stream():
         activate_stream()
     return render_template('stream.html')
 
-@app.route('/modeled')
-def modeled():
+@app.route('/recognition')
+def recognition():
     if not cap == None:
         activate_stream()
-    return render_template('modeled.html')
+    return render_template('recognition.html')
 
 @app.route('/tracking')
 def tracking():
@@ -81,7 +81,7 @@ def gen():
         else:
             break
 
-def modeled_gen():
+def recognition_gen():
     try:
         cap.isOpened()
     except AttributeError:
@@ -117,14 +117,14 @@ def video_feed():
     return Response(gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@app.route('/streaming/modeled_feed')
-def modeled_feed():
-    return Response(modeled_gen(),
+@app.route('/streaming/recognition_feed')
+def recognition_feed():
+    return Response(recognition_gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/streaming/tracked_feed')
 def tracked_feed():
-    return Response(modeled_gen(),
+    return Response(recognition_gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 

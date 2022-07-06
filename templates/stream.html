@@ -5,8 +5,10 @@
 {% endblock %}
 
 {% block body %}
-  <h1>No processing</h1>
+  <h2>No processing</h2>
 
-  <img src="{{ url_for('video_feed') }}">
+  <div class="video-container">
+      <img class="video" src="{{ url_for('video_feed') }}">
+  </div>
   
 {% endblock %}

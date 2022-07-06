@@ -1,6 +1,5 @@
 body {
   background-color: black;
-  font-size: larger;
   font-weight: 500;
   font-family: 'Saira';
   color: white;
@@ -15,13 +14,13 @@ a {
 }
 
 h1 {
-  color: #13efba;
-  font-size: 3rem;
+  color: white;
+  font-size: 2rem;
 }
 
 h2 {
-  color: #13efba;
-  font-size: 2rem;
+  color: white;
+  font-size: 1.5rem;
 }
 
 div {
@@ -34,7 +33,8 @@ div {
 */
 header {
   padding: 1%;
-  padding-bottom: inherit;
+  padding-bottom: 0px;
+  display: inline-block;
 }
 
 div#logo {
@@ -56,6 +56,15 @@ h1#title {
 /*
   Drop zone styling
 */
+
+.video {
+  display: block;
+  height: 50vh;
+  width: auto;
+  max-width: 50vw
+}
+
+
 #drop_zone {
   border: 5px solid grey;
   width:  60%;
