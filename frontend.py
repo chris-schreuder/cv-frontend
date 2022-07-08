@@ -1,9 +1,12 @@
 import io
 import json
 import os
-
+import cvzone
+import torch
 from time import time, sleep
 import time
+
+import imutils
 import requests
 
 from flask import Flask, render_template, Response, request
@@ -12,14 +15,18 @@ import cv2
 import numpy as np
 
 import postprocessing
+from trackers import KFTracker
 
 ENDPOINT_recognition = 'http://127.0.0.1:8000/api/facial_recognition/inference/'
 ENDPOINT_tracking = 'http://127.0.0.1:8000/api/people_detection/inference/'
 
 cap = None
+cap_surveillance = None
 video = None
 currentframe = None
 response = []
+
+model = None
 
 identified = []
 unidentified = []
@@ -35,9 +42,37 @@ def activate_stream():
     global currentframe
     currentframe = 0
 
+    global prev
+    prev = 0
+
+def activate_surveillance():
+    global prev
+    prev = 0
+    global cap_surveillance
+    RTSP_URL = 'rtsp://admin:Bo0214925184!21@105.233.39.146:5544/Streaming/Channels/101'
+    os.environ['OPENCV_FFMPEG_CAPTURE_OPTIONS'] = 'rtsp_transport;tcp'
+    cap_surveillance = cv2.VideoCapture(RTSP_URL, cv2.CAP_FFMPEG)
+    cap_surveillance.set(3, 680)
+    cap_surveillance.set(4, 480)
+    fourcc = cv2.VideoWriter_fourcc(*'vp80')
+
+    global currentframe
+    currentframe = 0
+
+    global model
+    model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+
 def deactivate_stream():
     global cap
     cap = None
+    global video
+    video = None
+    global currentframe
+    currentframe = None
+
+def deactivate_stream_surveillance():
+    global cap_surveillance
+    cap_surveillance = None
     global video
     video = None
     global currentframe
@@ -49,22 +84,31 @@ app = Flask(__name__, static_folder='static')
 @app.route('/')
 def index():
     deactivate_stream()
+    deactivate_stream_surveillance()
     return render_template('index.html')
 
 @app.route('/stream')
 def stream():
-    if not cap:
-        activate_stream()
+    # if not cap:
+    #     activate_stream()
+    deactivate_stream()
+    deactivate_stream_surveillance()
+    if not cap_surveillance:
+        activate_surveillance()
     return render_template('stream.html')
 
 @app.route('/recognition')
 def recognition():
+    deactivate_stream()
+    deactivate_stream_surveillance()
     if not cap == None:
         activate_stream()
     return render_template('recognition.html')
 
 @app.route('/tracking')
 def tracking():
+    deactivate_stream()
+    deactivate_stream_surveillance()
     if not cap == None:
         activate_stream()
     return render_template('tracking.html')
@@ -72,6 +116,7 @@ def tracking():
 @app.route('/return')
 def main_site():
     deactivate_stream()
+    deactivate_stream_surveillance()
     main_url = request.host_url.replace("8001","8000").replace('return','/')
     return render_template('return.html', main_url=main_url)
 
@@ -80,13 +125,70 @@ def gen():
         cap.isOpened()
     except AttributeError:
         activate_stream()
-    while (cap.isOpened()):
+    while cap.isOpened():
         ret, img = cap.read()
         img = cv2.flip(img, 1)
         if ret:
             img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
             frame = cv2.imencode('.png', img)[1].tobytes()
-            yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
+            yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n'
+        else:
+            break
+
+def gen_surveillance():
+    global model
+    global prev
+    global response
+    tracker = KFTracker(1 / 1., 0, file_name=None)
+    try:
+        cap_surveillance.isOpened()
+    except AttributeError:
+        activate_surveillance()
+    while cap_surveillance.isOpened():
+        ret, img = cap_surveillance.read()
+        if ret:
+            try:
+                _, jpeg = cv2.imencode('.jpg', img)
+                payload = {'image': jpeg.tobytes()}
+                response = requests.post(ENDPOINT_tracking,
+                                         files=payload).json()
+                people = response.get('People')
+                img = postprocessing.drawPeople(img, people)
+                centroids = []
+                for person in people:
+                    centroids.append(person.get('centroid'))
+                tracks = postprocessing.getTracks(tracker, centroids)
+                img = postprocessing.drawTracks(img, tracks['Tracks'])
+                img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
+                frame = cv2.imencode('.png', img)[1].tobytes()
+                yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n'
+            except Exception as e:
+                print(str(e))
+        else:
+            break
+
+def object_detection():
+    global model
+    global response
+    try:
+        cap_surveillance.isOpened()
+    except AttributeError:
+        activate_surveillance()
+    while cap_surveillance.isOpened():
+        ret, img = cap_surveillance.read()
+        if ret:
+            try:
+                _, jpeg = cv2.imencode('.jpg', img)
+                payload = {'image': jpeg.tobytes()}
+                response = requests.post(ENDPOINT_tracking,
+                                         files=payload).json()
+                people = response.get('People')
+                img = postprocessing.drawPeople(img, people)
+                img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
+                frame = cv2.imencode('.png', img)[1].tobytes()
+                yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n'
+            except Exception as e:
+                print(str(e))
         else:
             break
 
@@ -100,7 +202,7 @@ def recognition_gen():
         cap.isOpened()
     except AttributeError:
         activate_stream()
-    while (cap.isOpened()):
+    while cap.isOpened():
         ret, img = cap.read()
         img = cv2.flip(img, 1)
         if ret:
@@ -126,9 +228,7 @@ def recognition_gen():
                 print(str(e))
             img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
             frame = cv2.imencode('.png', img)[1].tobytes()
-            #print('before send')
-            yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
-            #print('after send')
+            yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n'
         else:
             break
 
@@ -140,7 +240,7 @@ def getIdentified():
         cap.isOpened()
     except AttributeError:
         activate_stream()
-    while (cap.isOpened()):
+    while cap.isOpened():
         time_elapsed = time.time() - prevIdent
         if time_elapsed > 1. / frame_rate:
             prevIdent = time.time()
@@ -149,14 +249,14 @@ def getIdentified():
                     img = postprocessing.gen_faces(identified)
                     img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
                     img = cv2.imencode('.png', img)[1].tobytes()
-                    yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+                    yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n'
                 except Exception as e:
                     print(str(e))
             else:
                 blank_image = np.zeros((160, 160, 3), np.uint8)
                 img = cv2.resize(blank_image, (0, 0), fx=0.5, fy=0.5)
                 img = cv2.imencode('.png', img)[1].tobytes()
-                yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+                yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n'
 
 def getUnidentified():
     global unidentified
@@ -166,7 +266,7 @@ def getUnidentified():
         cap.isOpened()
     except AttributeError:
         activate_stream()
-    while (cap.isOpened()):
+    while cap.isOpened():
         time_elapsed = time.time() - prevIdent
         if time_elapsed > 1. / frame_rate:
             prevIdent = time.time()
@@ -175,14 +275,14 @@ def getUnidentified():
                     img = postprocessing.gen_faces(unidentified)
                     img = cv2.resize(img, (0, 0), fx=0.5, fy=0.5)
                     img = cv2.imencode('.png', img)[1].tobytes()
-                    yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+                    yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n'
                 except Exception as e:
                     print(str(e))
             else:
                 blank_image = np.zeros((160, 160, 3), np.uint8)
                 img = cv2.resize(blank_image, (0, 0), fx=0.5, fy=0.5)
                 img = cv2.imencode('.png', img)[1].tobytes()
-                yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n')
+                yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + img + b'\r\n'
 
 
 def tracking_gen():
@@ -193,7 +293,8 @@ def tracking_gen():
         cap.isOpened()
     except AttributeError:
         activate_stream()
-    while (cap.isOpened()):
+        tracker = KFTracker(1 / 1., 0, file_name=None)
+    while cap.isOpened():
         ret, img = cap.read()
         img = cv2.flip(img, 1)
         if ret:
@@ -202,18 +303,25 @@ def tracking_gen():
                 payload = {'image': jpeg.tobytes()}
                 response = requests.post(ENDPOINT_tracking,
                                          files=payload).json()
+                people = response.get('People')
+                img = postprocessing.drawPeople(img, people)
+                centroids = []
+                for person in people:
+                    centroids.append(person.get('centroid'))
+                tracks = postprocessing.getTracks(tracker, centroids)
+                img = postprocessing.drawTracks(img, tracks['Tracks'])
             except Exception as e:
                 print(str(e))
             img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
             frame = cv2.imencode('.png', img)[1].tobytes()
-            yield (b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n')
+            yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n'
         else:
             break
 
 
 @app.route('/streaming/video_feed')
 def video_feed():
-    return Response(gen(),
+    return Response(gen_surveillance(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/streaming/recognition_feed')
@@ -238,4 +346,4 @@ def tracked_feed():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, threaded=True)
+    app.run(debug=True, threaded=True, host="0.0.0.0")

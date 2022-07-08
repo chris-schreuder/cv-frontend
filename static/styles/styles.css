@@ -57,6 +57,11 @@ h1#title {
   Drop zone styling
 */
 
+.vid-container{
+    float: left;
+    display: inline;
+}
+
 .video {
   display: block;
   height: 50vh;
@@ -70,13 +75,13 @@ h1#title {
   height: 50vh;
   width: fit-content;
   max-width: 11vw;
-  overflow-x: hidden;
-  overflow-y: auto;
   display: inline;
   vertical-align:top;
   float: left;
   padding-left: 25px;
 }
+
+
 
 .face-scroll img{
     width: 7vw;

@@ -32,10 +32,36 @@ def gen_faces(faces):
         if len(faces_img) == 0:
             faces_img = face
         else:
-            print(np.array(faces_img).shape)
-            print(np.array(face).shape)
-            # face = face[:, :, 0]
-            print(np.array(face).shape)
             faces_img = np.concatenate((faces_img, face), axis=0)
-    print(faces_img.shape)
     return faces_img
+
+def getTracks(tracker, centroids):
+    track_hist = {
+            'Tracks': []
+        }
+    tracker.run(centroids)
+    for i in range(len(tracker.measurements)):
+        for track in tracker.tracks:
+            x_hist = []
+            y_hist = []
+            colour_hist = []
+            for t in range(0, track.x_hist.shape[0]):
+                x_hist.append(track.x_hist[t, 0])
+                y_hist.append(track.x_hist[t, 1])
+                colour_hist.append(track.colour)
+            track_hist['Tracks'].append({'x': x_hist, 'y': y_hist, 'colour': colour_hist})
+    return track_hist
+
+def drawTracks(img, tracks):
+    for track in tracks:
+        x = np.array(track.get('x'))
+        y = np.array(track.get('y'))
+        colour = track.get('colour')
+        for i in range(x.shape[0]):
+            cv2.circle(img, (int(x[i]), int(y[i])), 5, colour[i], 2)
+    return img
+
+def drawPeople(img, people):
+    for person in people:
+        cv2.rectangle(img, (int(person.get('x0')), int(person.get('y0'))), (int(person.get('x1')), int(person.get('y1'))), (0, 0, 255), 2)
+    return img
