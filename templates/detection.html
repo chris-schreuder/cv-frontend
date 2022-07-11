@@ -1,10 +1,38 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+{% extends "layout.html" %}
 
-</body>
-</html>
+{% block title %}
+    Live Stream
+{% endblock %}
+
+{% block script %}
+ <script>
+    window.addEventListener('DOMContentLoaded', (event) => {
+        setInterval(UpdateCounters, 1000);
+    });
+
+    function UpdateCounters() {
+        fetch("{{ url_for('detection_feed_count') }}")
+            .then((response) => {
+            return response.json();
+            })
+            .then((dict) => {
+                let peopleH = document.querySelector("#people");
+                let objectsH = document.querySelector("#objects");
+
+                peopleH.textContent = `People in frame: ${dict["people"]}`;
+                objectsH.textContent = `Objects in frame: ${dict["objects"]}`;
+            });
+    }
+ </script>
+{% endblock %}
+
+{% block body %}
+  <h2>No processing</h2>
+
+  <div class="video-container">
+      <img class="video" src="{{ url_for('detection_feed') }}">
+      <h2 id="people"></h2>
+      <h2 id="objects"></h2>
+  </div>
+  
+{% endblock %}

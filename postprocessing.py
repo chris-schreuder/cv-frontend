@@ -62,6 +62,17 @@ def drawTracks(img, tracks):
     return img
 
 def drawPeople(img, people):
+    count = 0
     for person in people:
-        cv2.rectangle(img, (int(person.get('x0')), int(person.get('y0'))), (int(person.get('x1')), int(person.get('y1'))), (0, 0, 255), 2)
+        count += 1
+        cv2.rectangle(img, (int(person.get('x0')), int(person.get('y0'))), (int(person.get('x1')), int(person.get('y1'))), (255, 0, 0), 2)
+        font = cv2.FONT_HERSHEY_DUPLEX
+        cv2.putText(img, 'Person'+str(count), (int(person.get('x0')) + 6, int(person.get('y0')) - 6), font, 0.7, (255, 0, 0), 1)
+    return img
+
+def drawObjects(img, objects):
+    for i in objects:
+        cv2.rectangle(img, (int(i.get('x0')), int(i.get('y0'))), (int(i.get('x1')), int(i.get('y1'))), (0, 0, 255), 2)
+        font = cv2.FONT_HERSHEY_DUPLEX
+        cv2.putText(img, str(i.get('name')), (int(i.get('x0')) + 6, int(i.get('y0')) - 6), font, 0.7, (0, 0, 255), 1)
     return img

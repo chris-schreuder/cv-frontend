@@ -9,7 +9,7 @@ import time
 import imutils
 import requests
 
-from flask import Flask, render_template, Response, request
+from flask import Flask, render_template, Response, request, jsonify
 
 import cv2
 import numpy as np
@@ -33,6 +33,8 @@ unidentified = []
 prev = 0
 prevIdent = 0
 prevUnident = 0
+numPeople = 0;
+numObjects = 0
 
 def activate_stream():
     global cap
@@ -46,6 +48,10 @@ def activate_stream():
     prev = 0
 
 def activate_surveillance():
+    global numPeople
+    global numObjects
+    numPeople = 0
+    numObjects = 0
     global prev
     prev = 0
     global cap_surveillance
@@ -89,8 +95,6 @@ def index():
 
 @app.route('/stream')
 def stream():
-    # if not cap:
-    #     activate_stream()
     deactivate_stream()
     deactivate_stream_surveillance()
     if not cap_surveillance:
@@ -112,6 +116,14 @@ def tracking():
     if not cap == None:
         activate_stream()
     return render_template('tracking.html')
+
+@app.route('/detection')
+def detection():
+    deactivate_stream()
+    deactivate_stream_surveillance()
+    if not cap == None:
+        deactivate_stream_surveillance()
+    return render_template('detection.html')
 
 @app.route('/return')
 def main_site():
@@ -170,6 +182,8 @@ def gen_surveillance():
 def object_detection():
     global model
     global response
+    global numObjects
+    global numPeople
     try:
         cap_surveillance.isOpened()
     except AttributeError:
@@ -183,7 +197,11 @@ def object_detection():
                 response = requests.post(ENDPOINT_tracking,
                                          files=payload).json()
                 people = response.get('People')
+                numPeople = len(people)
                 img = postprocessing.drawPeople(img, people)
+                objects = response.get('Objects')
+                numObjects = len(objects)
+                img = postprocessing.drawObjects(img, objects)
                 img = cv2.resize(img, (0,0), fx=0.5, fy=0.5)
                 frame = cv2.imencode('.png', img)[1].tobytes()
                 yield b'--frame\r\n'b'Content-Type: image/png\r\n\r\n' + frame + b'\r\n'
@@ -191,6 +209,21 @@ def object_detection():
                 print(str(e))
         else:
             break
+
+def getPeople():
+    global numPeople
+    try:
+        return numPeople
+    except:
+        return 0
+
+def getObjects():
+    global numObjects
+    try:
+        return numObjects
+    except:
+        return 0
+
 
 def recognition_gen():
     global identified
@@ -343,6 +376,18 @@ def unidentified_feed():
 def tracked_feed():
     return Response(tracking_gen(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/streaming/detection_feed')
+def detection_feed():
+    return Response(object_detection(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/streaming/detection_feed/counts')
+def detection_feed_count():
+    return jsonify({
+        "people": getPeople(),
+        "objects": getObjects()
+    })
 
 
 if __name__ == '__main__':
